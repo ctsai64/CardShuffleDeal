@@ -6,7 +6,7 @@ Boring, Annoying, and Unnecessary.
 A human dealer stops, starts, and stops again. 
 They pause to shuffle, miscount cards, and simply can’t move fast enough.
 
-Big Deal is an autonomous playing card shuffler and dealer.
+**Big Deal is an autonomous playing card shuffler and dealer.**
 
 Given a number of players and a number of cards to be dealt, Big Deal will continuously and efficiently distribute cards to each player.
 
