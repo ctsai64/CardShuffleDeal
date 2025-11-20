@@ -1,31 +1,3 @@
-/*
-A0 - pho1
-A1 - pho2
-A2 - butPlayUp
-A3 - butPlayDown
-A4 - LCD
-A5 - LCD
-A6 - butStart
-A7 - butCardDown
-A8 - butCardUp
-A9 - randPin
-
-13 - Stepper In4
-12 - Stepper In3
-11 - Stepper In2
-10 - Stepper In1
-
-9 - motorL1
-8 - motorL2
-7 - motorR1
-6 - motorR2
-5 - motorD1 
-4 - motorD2
-3 - motorS1
-2 - motorS2
-
-*/
-
 #include <AccelStepper.h>
 #include "Adafruit_LiquidCrystal.h"
 
@@ -50,25 +22,24 @@ const int motorS2 = 2;  // Shooting roller control pin 2 (Your list: 2 - motorS2
 #define IN4 13
 
 // Buttons (Digital and Analog)
-const int butPlayUp   = A2;  // A2 - butPlayUp
-const int butPlayDown = A3;  // A3 - butPlayDown
-const int butCardUp   = A6;  // A6 - butCardUp
-const int butCardDown = A7;  // A7 - butCardDown
-const int butStart    = A8;  // A8 - butStart
+const int butPlayUp   = A2; 
+const int butPlayDown = A3; 
+const int butStart    = A4; 
+const int butCardUp   = A5;  
+const int butCardDown = A6;  
 
 // Photoresistors
 const int phoLeft  = A1; // A1 - pho2 -> renamed to phoLeft for clarity
 const int phoRight = A0; // A0 - pho1 -> renamed to phoRight for clarity
 
 // Random seed
-const int randPin = A9; // A9 - randPin
-
+const int randPin = A7;
 // =======================================================
 //                     CONSTANTS
 // =======================================================
 
 const unsigned long cardDelay = 300;
-const int sensorThreshold = 40;
+const int sensorThreshold = 1;
 
 // DC Motor Speed Constants (0-255)
 const int motorSpeedL = 255; // Left motor speed
@@ -81,7 +52,7 @@ int numPlayers = 4;
 int numCards   = 52;
 
 // LCD (16-pin parallel)
-Adafruit_LiquidCrystal lcd(0); //A4, A5
+Adafruit_LiquidCrystal lcd(0); //Data 20, Clock 21
 
 // =======================================================
 //                  STEPPER (AccelStepper)
@@ -116,7 +87,6 @@ void runMotor(int pin) {
 void lcdShufflingAnimation() {
   lcd.clear();
   lcd.print("Shuffling...");
-  Serial.println("Shuffling animation");
 
   for (int i = 0; i < 3; i++) {
     lcd.setCursor(0, 1);
@@ -134,7 +104,6 @@ void lcdShufflingAnimation() {
 void lcdDealingAnimation() {
   lcd.clear();
   lcd.print("Dealing cards");
-  Serial.println("Dealing animation");
 
   for (int i = 0; i < 5; i++) {
     lcd.setCursor(0, 1);
@@ -352,6 +321,7 @@ void loop() {
 
     // SHUFFLING (Using *1 pins, assuming *2 pins are LOW for forward)
     while (left || right) {
+      Serial.println("Have cards, shuffling");
       if (left && right) {
         int r = random(0,2);
         if (r == 0) runMotor(motorL1); // Use motorL1 pin
@@ -372,15 +342,17 @@ void loop() {
     float angle = 360.0 / numPlayers;
 
     digitalWrite(motorS1, HIGH); // Shooter motor ON
-    // NOTE: If you want to use the speed constant, change this to analogWrite(motorS1, motorSpeedS);
 
     int remaining = numCards;
     while (remaining > 0) {
-
-      runMotor(motorD1);   // Deal card (Using motorD1 pin)
-      // NOTE: If you want to use the speed constant, you'd need to modify runMotor to take the speed.
+      Serial.println("Dealing");
+      runMotor(motorD1); // This runs the dealing motor and includes a delay(cardDelay)
 
       rotateDegrees(angle);
+      
+      while (stepper.distanceToGo() != 0) {
+        stepper.run();
+      }
 
       remaining--;
     }
