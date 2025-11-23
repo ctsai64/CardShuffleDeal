@@ -321,15 +321,20 @@ void loop() {
 
     // SHUFFLING (Using *1 pins, assuming *2 pins are LOW for forward)
     while (left || right) {
-      Serial.println("Have cards, shuffling");
       if (left && right) {
+        Serial.println("Both have cards");
         int r = random(0,2);
         if (r == 0) runMotor(motorL1); // Use motorL1 pin
         else        runMotor(motorR1); // Use motorR1 pin
       }
-      else if (left)  runMotor(motorL1);
-      else if (right) runMotor(motorR1);
-
+      else if (left) {
+        Serial.println("Left has cards");
+        runMotor(motorL1);
+      }
+      else if (right) {
+        Serial.println("Right has cards");
+        runMotor(motorR1);
+      }
       delay(55);
 
       left  = leftHasCards();
@@ -345,7 +350,7 @@ void loop() {
 
     int remaining = numCards;
     while (remaining > 0) {
-      Serial.println("Dealing");
+      Serial.println(remaining);
       runMotor(motorD1); // This runs the dealing motor and includes a delay(cardDelay)
 
       rotateDegrees(angle);
