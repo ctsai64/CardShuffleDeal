@@ -1,0 +1,163 @@
+              +-----------------------+
+              |     USB Power Bank    |
+              |        5V             |
+              +-----------+-----------+
+                          |
+                          | 5V
+                          |
+                      +---+---+
+                      | Arduino R4 |
+                      +---+---+
+                          |
+         +----------------+----------------+
+         |                                 |
+   ULN2003 VCC                          Arduino 5V (logic for L293D Vcc1)
+         |                                 |
+         |                                 |
+    Stepper Motor (28BYJ-48)               |
+         |                                 |
+        IN1->Pin9, IN2->Pin10, IN3->Pin11, IN4->Pin12
+                          |
+                        GND  <----------------------+
+                                                  |
+            +-------------------------------------+
+            |
++---------------------------+
+| 5–6V Motor Supply Module  |
++------------+--------------+
+             |
+             | 5V Motor Rail
+             |
+  +----------+----------+
+  |                     |
++----+               +----+
+| L293D #1           | L293D #2
+|------------------- |------------------|
+Vcc1->Arduino 5V      Vcc1->Arduino 5V   (Logic pins)
+Vcc2->Motor Rail      Vcc2->Motor Rail   (Motors power)
+GND -> common GND     GND -> common GND
+Inputs -> Arduino     Inputs -> Arduino
+Enable -> Arduino     Enable -> Arduino
+Outputs -> Motors 1 & 2  Outputs -> Motors 3 & 4
+
+
+Arduino Uno R4
+
+Have in kit
+
+Dimensions: 66.04 mm × 50.8 mm × ~18 mm
+
+See diagram for mounting hole placements
+
+Powerbank
+
+Can use one already available or buy new
+
+Options:
+
+Adafruit Powerbank: Link
+ ($26.95)
+
+Dimensions: 90 mm × 63 mm × 12.5 mm
+
+Anker Powerbank: Amazon Link ($15.59)
+
+Dimensions: 152.15 mm × 71.37 mm × 15.49 mm
+
+5 V, >3 A output, most powerbanks compatible
+
+USB A to USB C Cable with Switch
+
+Single, 5 V, 2 A: Amazon Link ($9.99), 300 mm long
+
+Two-Pack w/ light indicator, 5 V, 2 A: Amazon Link ($11.99), 300 mm long
+
+Dimensions of switches unknown
+
+2× Breadboards (Medium)
+
+Get from Penn
+
+Dimensions: 82 mm × 54 mm × 8 mm (9 mm with adhesive)
+
+LCD Display
+
+Module with I2C interface ($6.99) or use one in kit
+
+Kit module: 70 mm × 24 mm × 7 mm
+
+Board: 80 mm × 36 mm × 1.5 mm
+
+5× Pushbuttons + 5× 10 Ω resistors
+
+Have in kit
+
+Button: 5 mm × 5 mm × 3 mm (+2 mm button)
+
+Optional: buy deeper buttons or print toppers if covering
+
+5× Push button caps
+
+Power Supply Module
+
+Have in kit
+
+Could forgo and use powerbank with decoupling capacitor for motors
+
+4× DC Motors
+
+Have in kit / get from Penn
+
+2× Motor Driver L293D
+
+Have in kit
+
+2× Precision Rollers
+
+Find
+
+<67 mm long
+
+2× Basic Rollers
+
+Find/make?
+
+<90 mm long
+
+Stepper Motor ULN2003
+
+Have in kit / get from Penn / buy higher torque if needed
+
+Ball Bearing
+
+Details TBD
+
+3× Card Sensing Options:
+
+IR Break Beam Sensor
+
+Pair needed: IR LED + IR receiver
+
+Positioned opposite each other, one below and one above deck
+
+Adafruit Link
+ ($2.95 each)
+
+Load Cell + Amplifier
+
+Might not detect a single card reliably
+
+Approx. $7.10 each
+
+Reflective IR Sensor
+
+Single sensor positioned above deck holder
+
+Weaker detection for dark cards
+
+1–2 cm from card surface
+
+Adafruit Link
+ ($1.95 each)
+
+Dimensions: 20 mm × 10 mm × 8 mm

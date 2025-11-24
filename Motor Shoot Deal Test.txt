@@ -1,0 +1,8 @@
+Motor Shoot Deal Test
+1 - D1B100
+Fails at 2-7 range
+10-7 D1B100
+15-10 D1B100 (or D1B125)
+20-15 D15B75 (nah)
+
+25-23 D5B50
