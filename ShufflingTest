@@ -1,0 +1,183 @@
+// --- DRV8833 Dual Motor Controller ---
+// Now supports forward/backward for BOTH motors:
+//
+// SPEED COMMANDS:
+//   CS<speed>   → Shooting motor speed (0–255)
+//   CD<speed>   → Dealing motor speed (0–255)
+//
+// SHOOTING MOTOR:
+//   SF → Shooting Forward (continuous)
+//   SB → Shooting Backward (continuous)
+//   SX → Stop Shooting
+//
+// DEALING MOTOR:
+//   XF → Dealing Forward (continuous)
+//   XB → Dealing Backward (continuous)
+//   DX → Stop Dealing
+//
+// TIMED DEALING PULSE:
+//   D<A>B<B> → Forward A ms, backward B ms  (ex: D1500B500)
+
+// -----------------------------------------------------------------------------
+// PIN DEFINITIONS
+// -----------------------------------------------------------------------------
+const int motorD1 = 9;  
+const int motorD2 = 8;
+
+const int motorS1 = 7;  
+const int motorS2 = 6;
+
+// -----------------------------------------------------------------------------
+// GLOBAL VARIABLES
+// -----------------------------------------------------------------------------
+int shootingSpeed = 255;
+int dealingSpeed  = 200;
+
+bool shootingOn = false;
+bool dealingOn  = false;
+
+// -----------------------------------------------------------------------------
+// SET MOTOR FUNCTION
+// direction =  1 (forward), -1 (reverse), 0 (stop)
+// -----------------------------------------------------------------------------
+void setMotor(int pin1, int pin2, int speed, int direction) {
+
+  speed = constrain(speed, 0, 255);
+
+  if (direction == 0 || speed == 0) {
+    digitalWrite(pin1, LOW);
+    digitalWrite(pin2, LOW);
+    return;
+  }
+
+  if (direction > 0) {
+    analogWrite(pin1, speed);
+    digitalWrite(pin2, LOW);
+  } else {
+    digitalWrite(pin1, LOW);
+    analogWrite(pin2, speed);
+  }
+}
+
+// MOTOR HELPERS ---------------------------------------------------------------
+void shootingForward()  { setMotor(motorS1, motorS2, shootingSpeed,  1); shootingOn = true; }
+void shootingBackward() { setMotor(motorS1, motorS2, shootingSpeed, -1); shootingOn = true; }
+void shootingStop()     { setMotor(motorS1, motorS2, 0, 0); shootingOn = false; }
+
+void dealingForward()   { setMotor(motorD1, motorD2, dealingSpeed,   1); dealingOn = true; }
+void dealingBackward()  { setMotor(motorD1, motorD2, dealingSpeed,  -1); dealingOn = true; }
+void dealingStop()      { setMotor(motorD1, motorD2, 0, 0); dealingOn = false; }
+
+// -----------------------------------------------------------------------------
+// SETUP
+// -----------------------------------------------------------------------------
+void setup() {
+  Serial.begin(9600);
+  Serial.println("DRV8833 Dual Motor Controller Ready.");
+
+  pinMode(motorD1, OUTPUT);
+  pinMode(motorD2, OUTPUT);
+  pinMode(motorS1, OUTPUT);
+  pinMode(motorS2, OUTPUT);
+
+  shootingStop();
+  dealingStop();
+}
+
+// -----------------------------------------------------------------------------
+// MAIN LOOP
+// -----------------------------------------------------------------------------
+void loop() {
+
+  if (Serial.available() == 0) {
+    delay(5);
+    return;
+  }
+
+  char c = toupper(Serial.read());
+
+  // ---------------- SPEED COMMANDS ----------------
+  if (c == 'C') {
+    if (Serial.available() > 0) {
+      char m = toupper(Serial.read());   // S or D
+      int val = Serial.parseInt();
+
+      if (val < 0 || val > 255) {
+        Serial.println("Error: Speed must be 0–255.");
+        return;
+      }
+
+      if (m == 'S') {
+        shootingSpeed = val;
+        Serial.print("Shooting speed set to ");
+        Serial.println(val);
+        if (shootingOn) shootingForward();
+      }
+      else if (m == 'D') {
+        dealingSpeed = val;
+        Serial.print("Dealing speed set to ");
+        Serial.println(val);
+      }
+      else {
+        Serial.println("Error: Use CS<speed> or CD<speed>.");
+      }
+    }
+    return;
+  }
+
+  // ---------------- SHOOTING MOTOR ----------------
+  if (c == 'S') {
+    if (Serial.available()) {
+      char next = toupper(Serial.read());
+      if (next == 'F') { shootingForward();  Serial.println("Shooting Forward");  return; }
+      if (next == 'B') { shootingBackward(); Serial.println("Shooting Backward"); return; }
+      if (next == 'X') { shootingStop();     Serial.println("Shooting Stopped");  return; }
+    }
+  }
+
+  // ---------------- DEALING MOTOR ----------------
+  if (c == 'X') {
+    if (Serial.available()) {
+      char next = toupper(Serial.read());
+      if (next == 'F') { dealingForward();  Serial.println("Dealing Forward");  return; }
+      if (next == 'B') { dealingBackward(); Serial.println("Dealing Backward"); return; }
+      if (next == 'X') { dealingStop();     Serial.println("Dealing Stopped");  return; }
+    }
+  }
+
+  // ---------------- DEALING TIMED PULSE ----------------
+  if (c == 'D') {
+    long forwardTime = Serial.parseInt();
+
+    if (Serial.peek() == 'B' || Serial.peek() == 'b')
+      Serial.read();
+
+    long backwardsTime = Serial.parseInt();
+
+    if (forwardTime <= 0) {
+      Serial.println("Error: Use D<ms>B<ms>");
+      return;
+    }
+
+    Serial.print("Pulse: Fwd "); Serial.print(forwardTime);
+    Serial.print(" ms, Back "); Serial.print(backwardsTime); Serial.println(" ms");
+
+    dealingForward();
+    delay(forwardTime);
+
+    dealingStop();
+    delay(25);
+
+    if (backwardsTime > 0) {
+      dealingBackward();
+      delay(backwardsTime);
+      dealingStop();
+    }
+
+    return;
+  }
+
+  // ---------------- UNKNOWN COMMAND ----------------
+  Serial.print("Unknown command: ");
+  Serial.println(c);
+}
