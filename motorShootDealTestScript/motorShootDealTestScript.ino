@@ -15,7 +15,7 @@ const int motorS2 = 2;  // Shooting Roller IN2 (B-IN2)
 
 // --- Global Speed Variables (Adjustable via Serial) ---
 int shootingSpeed = 255; 
-int dealingSpeed = 200;
+int dealingSpeed = 255;
 
 // --- Global State Variables ---
 // Tracks the current state of the Shooting Roller for the 'S' and 'X' commands.
