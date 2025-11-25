@@ -4,216 +4,177 @@
 //   - CD<speed>: Change Dealing Speed (0-255)
 //   - S: Start Shooting Roller (Continuous)
 //   - X: Stop Shooting Roller
-//   - D<A>B<B>: Dealing Roller Pulse (A=forward ms, B=backward ms). Ex: D1500B500
+//   - d<a>s<b>b<c>s<d>: Dealing Pulse with forward/backward time & speed
 
 // --- Pin Definitions ---
-const int motorD1 = 5;  // Dealing Roller IN1 (A-IN1)
-const int motorD2 = 4;  // Dealing Roller IN2 (A-IN2)
+const int motorD1 = 9;  
+const int motorD2 = 8;  
+const int motorS1 = 7;  
+const int motorS2 = 6;  
 
-const int motorS1 = 3;  // Shooting Roller IN1 (B-IN1)
-const int motorS2 = 2;  // Shooting Roller IN2 (B-IN2)
-
-// --- Global Speed Variables (Adjustable via Serial) ---
 int shootingSpeed = 255; 
 int dealingSpeed = 255;
 
-// --- Global State Variables ---
-// Tracks the current state of the Shooting Roller for the 'S' and 'X' commands.
 bool isShootingRollerOn = false; 
 
-
-/**
- * @brief Sets the speed and direction of a single DC motor connected to the DRV8833.
- * @param pinIN1 The Arduino pin connected to the motor driver's IN1.
- * @param pinIN2 The Arduino pin connected to the motor driver's IN2.
- * @param speed The PWM speed value (0 = stop, 255 = full speed).
- * @param direction 1 for forward (IN1 PWM, IN2 LOW), -1 for reverse (IN2 PWM, IN1 LOW).
- */
 void setMotorSpeed(int pinIN1, int pinIN2, int speed, int direction) {
-  // Ensure speed is within the valid range
   speed = constrain(speed, 0, 255);
 
   if (speed == 0) {
-    // If speed is 0, brake/stop the motor (Coast/Slow stop is when both are LOW)
     digitalWrite(pinIN1, LOW);
     digitalWrite(pinIN2, LOW);
-  } else if (direction > 0) {
-    // Forward direction
+  } 
+  else if (direction > 0) {
     analogWrite(pinIN1, speed);
     digitalWrite(pinIN2, LOW);
-  } else if (direction < 0) {
-    // Reverse direction
+  } 
+  else if (direction < 0) {
     digitalWrite(pinIN1, LOW);
     analogWrite(pinIN2, speed);
   }
 }
 
-// --- Motor Control Helper Functions ---
-
 void runDealingRoller(int speed, int direction) {
-  Serial.print("Running Dealing Roller at speed: ");
+  Serial.print("Dealing Roller Speed: ");
   Serial.println(speed);
   setMotorSpeed(motorD1, motorD2, speed, direction);
 }
 
 void runShootingRoller(int speed, int direction) {
-  Serial.print("Running Shooting Roller at speed: ");
+  Serial.print("Shooting Roller Speed: ");
   Serial.println(speed);
   setMotorSpeed(motorS1, motorS2, speed, direction);
 }
 
 void stopDealingRoller() {
   Serial.println("Stopping Dealing Roller.");
-  setMotorSpeed(motorD1, motorD2, 0, 0); // Speed 0 stops the motor
+  setMotorSpeed(motorD1, motorD2, 0, 0);
 }
 
 void stopShootingRoller() {
   Serial.println("Stopping Shooting Roller.");
-  setMotorSpeed(motorS1, motorS2, 0, 0); // Speed 0 stops the motor
+  setMotorSpeed(motorS1, motorS2, 0, 0);
 }
 
-
 void setup() {
-  // Initialize Serial communication for debugging
   Serial.begin(9600);
   Serial.println("DRV8833 Motor Controller Ready.");
-  Serial.print("Current Speeds: Shooting=");
-  Serial.print(shootingSpeed);
-  Serial.print(", Dealing=");
-  Serial.println(dealingSpeed);
-  Serial.println("Commands:");
-  Serial.println("  CS<speed> -> Change Shooting Speed (0-255). Ex: CS180");
-  Serial.println("  CD<speed> -> Change Dealing Speed (0-255). Ex: CD100");
-  Serial.println("  S         -> Start Shooting Roller (Continuous)");
-  Serial.println("  X         -> Stop Shooting Roller");
-  Serial.println("  D<A>B<B>  -> Dealing Pulse: A ms Forward, B ms Backward. Ex: D1500B500");
-  
-  // Set all motor control pins as outputs
+
   pinMode(motorD1, OUTPUT);
   pinMode(motorD2, OUTPUT);
   pinMode(motorS1, OUTPUT);
   pinMode(motorS2, OUTPUT);
 
-  // Ensure motors are stopped initially
   stopDealingRoller();
   stopShootingRoller();
 }
 
 void loop() {
-  // Check if a command is available in the serial buffer
   if (Serial.available() > 0) {
-    // Read the incoming command character (e.g., 'C', 'S', 'X', or 'D')
-    char command = Serial.read();
-    command = toupper(command); 
 
-    // --- Speed Change Commands (CS and CD) ---
+    char command = toupper(Serial.read());
+
+    // -------- CS / CD SPEED COMMANDS --------
     if (command == 'C') {
-        if (Serial.available() > 0) {
-            char motorID = toupper(Serial.read()); // Read S or D
-            long newSpeed = Serial.parseInt(); // Read the number
-            
-            // Check if the number is in the valid PWM range
-            if (newSpeed >= 0 && newSpeed <= 255) {
-                if (motorID == 'S') {
-                    shootingSpeed = (int)newSpeed;
-                    Serial.print("Shooting speed set to: ");
-                    Serial.println(shootingSpeed);
-                    // If the shooting motor is currently running, update its speed instantly
-                    if (isShootingRollerOn) {
-                        runShootingRoller(shootingSpeed, 1);
-                    }
-                } else if (motorID == 'D') {
-                    dealingSpeed = (int)newSpeed;
-                    Serial.print("Dealing speed set to: ");
-                    Serial.println(dealingSpeed);
-                } else {
-                    Serial.println("Error: Unknown motor ID for speed change. Use CS<speed> or CD<speed>.");
-                }
-            } else {
-                Serial.println("Error: Speed must be between 0 and 255.");
-            }
-            // Clear remaining buffer after speed command
-            while (Serial.available()) { Serial.read(); }
-            return;
+      if (Serial.available()) {
+        char id = toupper(Serial.read());
+        long v = Serial.parseInt();
+        if (v < 0 || v > 255) {
+          Serial.println("Speed must be 0–255");
+          while (Serial.available()) Serial.read();
+          return;
         }
-    }
-
-    // --- Continuous Commands (S and X) ---
-    if (command == 'S') {
-      runShootingRoller(shootingSpeed, 1); // Uses current shootingSpeed
-      isShootingRollerOn = true;
-      Serial.println("Shooting Roller started continuously.");
-      // Clear buffer for simple commands
-      while (Serial.available()) { Serial.read(); }
-      return; 
-    }
-    
-    if (command == 'X') {
-      stopShootingRoller();
-      isShootingRollerOn = false;
-      Serial.println("Shooting Roller stopped.");
-      // Clear buffer for simple commands
-      while (Serial.available()) { Serial.read(); }
+        if (id == 'S') {
+          shootingSpeed = v;
+          if (isShootingRollerOn) runShootingRoller(shootingSpeed, 1);
+          Serial.print("Shooting speed set: ");
+          Serial.println(shootingSpeed);
+        }
+        else if (id == 'D') {
+          dealingSpeed = v;
+          Serial.print("Dealing speed set: ");
+          Serial.println(dealingSpeed);
+        }
+        else Serial.println("Unknown ID. Use CS or CD.");
+      }
+      while (Serial.available()) Serial.read();
       return;
     }
 
-    // --- Timed Pulse Command (D<A>B<B>) ---
-    if (command == 'D') {
-      long durationForward = Serial.parseInt(); // Reads duration 'A'
-      
-      // Look for the 'B' character immediately after the first number
-      char separator = 0; 
-      if (Serial.peek() == 'B' || Serial.peek() == 'b') {
-          separator = Serial.read(); // Consume the 'B'
-      }
-      
-      long durationBackward = Serial.parseInt(); // Reads duration 'B'
-
-      if (durationForward > 0 && durationBackward >= 0 && toupper(separator) == 'B') {
-        Serial.print("Command received: D");
-        Serial.print(durationForward);
-        Serial.print("B");
-        Serial.print(durationBackward);
-        Serial.println(" ms pulse sequence.");
-
-        // --- Forward Pulse (A) ---
-        Serial.print("Forward pulse (A) for "); Serial.print(durationForward); Serial.println(" ms.");
-        runDealingRoller(dealingSpeed, 1); // Direction 1: Forward
-        delay(durationForward); 
-        stopDealingRoller();
-
-        // --- Backward Pulse (B) ---
-        if (durationBackward > 0) {
-            // Short delay to avoid issues when rapidly reversing current on the motor driver
-            delay(25); 
-            Serial.print("Backward pulse (B) for "); Serial.print(durationBackward); Serial.println(" ms.");
-            runDealingRoller(dealingSpeed, -1); // Direction -1: Reverse
-            delay(durationBackward); 
-            stopDealingRoller();
-        }
-
-        Serial.println("Dealing Roller sequence complete.");
-
-      } else {
-        Serial.println("Error: Command format must be D<forward_ms>B<backward_ms>. E.g., D1500B500.");
-      }
-      
-      // Clear any remaining serial data
-      while (Serial.available()) {
-        Serial.read();
-      }
-      
-    } else {
-      // Handle unrecognized command
-      Serial.print("Unrecognized command: ");
-      Serial.println(command);
-      // Clear all serial data if an unrecognized command is found
-      while (Serial.available()) {
-        Serial.read();
-      }
+    // -------- CONTINUOUS SHOOTING --------
+    if (command == 'S') {
+      runShootingRoller(shootingSpeed, 1);
+      isShootingRollerOn = true;
+      Serial.println("Shooting Roller Started.");
+      while (Serial.available()) Serial.read();
+      return;
     }
+
+    if (command == 'X') {
+      stopShootingRoller();
+      isShootingRollerOn = false;
+      Serial.println("Shooting Roller Stopped.");
+      while (Serial.available()) Serial.read();
+      return;
+    }
+
+    // ==========================================================
+    //            NEW DEALING COMMAND FORMAT
+    //               d<a>s<b>b<c>s<d>
+    // ==========================================================
+    if (command == 'D') {
+
+      long forwardTime = Serial.parseInt();  
+
+      if (Serial.read() != 's') { Serial.println("ERR: Expected s"); return; }
+
+      long forwardSpeed = Serial.parseInt();
+
+      if (Serial.read() != 'b') { Serial.println("ERR: Expected b"); return; }
+
+      long backwardTime = Serial.parseInt();
+
+      if (Serial.read() != 's') { Serial.println("ERR: Expected s"); return; }
+
+      long backwardSpeed = Serial.parseInt();
+
+      // --- VALIDATE ---
+      if (forwardTime < 0 || backwardTime < 0) {
+        Serial.println("ERR: times must be positive");
+        return;
+      }
+      forwardSpeed = constrain(forwardSpeed, 0, 255);
+      backwardSpeed = constrain(backwardSpeed, 0, 255);
+
+      Serial.println("Parsed command:");
+      Serial.print("Forward Time: "); Serial.println(forwardTime);
+      Serial.print("Forward Speed: "); Serial.println(forwardSpeed);
+      Serial.print("Backward Time: "); Serial.println(backwardTime);
+      Serial.print("Backward Speed: "); Serial.println(backwardSpeed);
+
+      // ---------- RUN FORWARD ----------
+      Serial.println("Running Forward...");
+      runDealingRoller(forwardSpeed, 1);
+      delay(forwardTime);
+      stopDealingRoller();
+      delay(25);
+
+      // ---------- RUN BACKWARD ----------
+      Serial.println("Running Backward...");
+      runDealingRoller(backwardSpeed, -1);
+      delay(backwardTime);
+      stopDealingRoller();
+
+      Serial.println("Done.");
+      while (Serial.available()) Serial.read();
+      return;
+    }
+
+    // ----- UNKNOWN COMMAND -----
+    Serial.print("Unknown command: ");
+    Serial.println(command);
+    while (Serial.available()) Serial.read();
   }
 
-  // A small delay for general loop stability
   delay(10);
 }
