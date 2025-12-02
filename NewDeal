@@ -12,8 +12,8 @@ const int motorL2 = 3;   // Left shuffle backward
 const int motorR1 = 4;   // Right shuffle forward
 const int motorR2 = 5;   // Right shuffle backward
 
-const int motorD1 = 8;   // Deal forward
-const int motorD2 = 9;   // Deal backward
+const int motorD1 = 9;   // Deal forward
+const int motorD2 = 8;   // Deal backward
 
 const int motorS1 = 6;   // Shooter forward
 const int motorS2 = 7;   // Shooter backward
@@ -43,8 +43,10 @@ const int randPin = A3;
 
 const unsigned long shuffleRunTime   = 300;
 const unsigned long shuffleDelay = 1000;
-const unsigned long dealForwardTime  = 45;
-const unsigned long dealBackwardTime = 150;
+
+const unsigned long dealForwardTime  = 50;
+const unsigned long dealDelay  = 35;
+const unsigned long dealBackwardTime = 200;
 
 const int sensorThreshold = 1;
 
@@ -102,18 +104,17 @@ void runShuffleLeft()  { motorForward(motorL1, motorL2, shuffleRunTime); }
 void runShuffleRight() { motorForward(motorR1, motorR2, shuffleRunTime); }
 void runAlternate() {
   while (true) {
-    if (digitalRead(butStart) == LOW) {
-      Serial.println("BREAK triggered");
-      break;
-    }
+    if (!digitalRead(butStart)) break;
     runShuffleLeft();
-
+    allOff(); 
     delay(shuffleDelay);
-
-    if (digitalRead(butStart) == LOW) break;
+    if (!digitalRead(butStart)) break;
     runShuffleRight();
+    allOff(); 
+    delay(shuffleDelay);
   }
 }
+
 
 
 // Deal motor
@@ -216,6 +217,9 @@ void runTestMode() {
   Serial.println("=======================");
 
   while (true) {
+    if (!digitalRead(butPlayUp)){
+        break;
+    }
     stepper.run();
 
     if (Serial.available()) {
@@ -315,6 +319,7 @@ void loop() {
     bool right = rightHasCards();
 
     // --- SHUFFLING ---
+    /*
     while (left || right) {
       if (!digitalRead(butStart)){
         break;
@@ -328,20 +333,41 @@ void loop() {
       left  = leftHasCards();
       right = rightHasCards();
     }
+    */
+    runAlternate();
 
     // --- DEALING ---
     lcdDealingAnimation();
 
     float angle = 360.0 / numPlayers;
+
+    runDealBackward();
     shooterOn();
 
     int remaining = numCards;
+    while (true) {
+      if (!digitalRead(butStart)){
+        break;
+      }
+      runDealForward();
+      delay(dealDelay);
+      runDealBackward();
+      delay(shuffleDelay);
+      //rotateDegrees(angle);
+      Serial.println("rotating");
+      digitalWrite(motorD1, LOW);
+      digitalWrite(motorD2, LOW);
+    }
+    /*
     while (remaining > 0) {
+      if (!digitalRead(butStart)){
+        break;
+      }
       runDealForward();
       rotateDegrees(angle);
       remaining--;
     }
-
+    */
     shooterOff();
 
     lcd.clear();
