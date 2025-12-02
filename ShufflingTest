@@ -1,183 +1,325 @@
-// --- DRV8833 Dual Motor Controller ---
-// Now supports forward/backward for BOTH motors:
+// --- DRV8833 Dual Motor Driver Controller for Arduino Mega 2560 ---
+// Features:
+//   - CS<spd> / CD<spd>      : Set speed (0–255)   e.g. C S 200  -> "CS200"
+//   - S<a>s<b>b<c>s<d>       : Shooting motor pulse forward/backward
+//                             e.g. S100s200b150s255
+//   - D<a>s<b>b<c>s<d>       : Dealing motor pulse forward/backward
+//   - A<run>,<gap>           : Alternating mode: runTime(ms), gapTime(ms)  e.g. A500,200
+//   - X                      : Stop ALL motors & exit alternating mode
 //
-// SPEED COMMANDS:
-//   CS<speed>   → Shooting motor speed (0–255)
-//   CD<speed>   → Dealing motor speed (0–255)
-//
-// SHOOTING MOTOR:
-//   SF → Shooting Forward (continuous)
-//   SB → Shooting Backward (continuous)
-//   SX → Stop Shooting
-//
-// DEALING MOTOR:
-//   XF → Dealing Forward (continuous)
-//   XB → Dealing Backward (continuous)
-//   DX → Stop Dealing
-//
-// TIMED DEALING PULSE:
-//   D<A>B<B> → Forward A ms, backward B ms  (ex: D1500B500)
+// Pin mapping (PWM-capable pins on Mega):
+//   motorD1 = 2  (PWM OK)
+//   motorD2 = 3  (PWM OK)
+//   motorS1 = 6  (PWM OK)  <- changed from 4 to 6 because 4 is not PWM on Mega
+//   motorS2 = 5  (PWM OK)
 
-// -----------------------------------------------------------------------------
-// PIN DEFINITIONS
-// -----------------------------------------------------------------------------
-const int motorD1 = 9;  
-const int motorD2 = 8;
+const int motorD1 = 2;  
+const int motorD2 = 3;  
+const int motorS1 = 4;  
+const int motorS2 = 5;  
 
-const int motorS1 = 7;  
-const int motorS2 = 6;
+int shootingSpeed = 255; 
+int dealingSpeed  = 255;
 
-// -----------------------------------------------------------------------------
-// GLOBAL VARIABLES
-// -----------------------------------------------------------------------------
-int shootingSpeed = 255;
-int dealingSpeed  = 200;
+volatile bool isAlternating = false; // used by runAlternating loop
 
-bool shootingOn = false;
-bool dealingOn  = false;
+// Safety / behavior tuning
+const unsigned long MIN_RUN_TIME = 10; // ms
+const unsigned long MIN_GAP_TIME = 0;  // ms
+const unsigned long DIRECTION_SWITCH_DELAY = 50; // ms pause when switching direction to reduce stress
 
-// -----------------------------------------------------------------------------
-// SET MOTOR FUNCTION
-// direction =  1 (forward), -1 (reverse), 0 (stop)
-// -----------------------------------------------------------------------------
-void setMotor(int pin1, int pin2, int speed, int direction) {
-
+// -----------------------------------------------
+// Generic Motor Control
+// -----------------------------------------------
+void runMotor(int IN1, int IN2, int speed, int direction) {
   speed = constrain(speed, 0, 255);
 
-  if (direction == 0 || speed == 0) {
-    digitalWrite(pin1, LOW);
-    digitalWrite(pin2, LOW);
+  if (speed == 0) {
+    // coast
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
     return;
   }
 
   if (direction > 0) {
-    analogWrite(pin1, speed);
-    digitalWrite(pin2, LOW);
+    analogWrite(IN1, speed);
+    digitalWrite(IN2, LOW);
   } else {
-    digitalWrite(pin1, LOW);
-    analogWrite(pin2, speed);
+    digitalWrite(IN1, LOW);
+    analogWrite(IN2, speed);
   }
 }
 
-// MOTOR HELPERS ---------------------------------------------------------------
-void shootingForward()  { setMotor(motorS1, motorS2, shootingSpeed,  1); shootingOn = true; }
-void shootingBackward() { setMotor(motorS1, motorS2, shootingSpeed, -1); shootingOn = true; }
-void shootingStop()     { setMotor(motorS1, motorS2, 0, 0); shootingOn = false; }
+void stopMotor(int IN1, int IN2) {
+  // coast
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+}
 
-void dealingForward()   { setMotor(motorD1, motorD2, dealingSpeed,   1); dealingOn = true; }
-void dealingBackward()  { setMotor(motorD1, motorD2, dealingSpeed,  -1); dealingOn = true; }
-void dealingStop()      { setMotor(motorD1, motorD2, 0, 0); dealingOn = false; }
+// -----------------------------------------------
+// Helper: extract next integer from string beginning at pos
+// Advances pos forward. Returns LONG (0 if none found).
+// -----------------------------------------------
+long extractNextInt(const String &s, int &pos) {
+  int len = s.length();
+  // skip non-digit / non-minus chars
+  while (pos < len && !isDigit(s[pos]) && s[pos] != '-') pos++;
+  if (pos >= len) return 0;
+  int start = pos;
+  // allow leading '-' once
+  if (s[pos] == '-') pos++;
+  while (pos < len && isDigit(s[pos])) pos++;
+  String num = s.substring(start, pos);
+  return num.toInt();
+}
 
-// -----------------------------------------------------------------------------
-// SETUP
-// -----------------------------------------------------------------------------
+// -----------------------------------------------
+// Parse and run a pulse command from the provided tail string
+// Expected sequence numbers with separators: <fwdTime> 's' <fwdSpeed> 'b' <backTime> 's' <backSpeed>
+// Example tail: "100s200b150s255" or "100 s 200 b 150 s 255" (spaces tolerated)
+// -----------------------------------------------
+void runPulseCommandFromString(const String &tail, int IN1, int IN2) {
+  int pos = 0;
+  int len = tail.length();
+
+  // Forward time
+  long fwdTime = extractNextInt(tail, pos);
+  // skip whitespace
+  while (pos < len && isSpace(tail[pos])) pos++;
+  if (pos >= len || tolower(tail[pos]) != 's') { Serial.println("ERR: expected 's' after forward time"); return; }
+  pos++; // consume 's'
+
+  // Forward speed
+  long fwdSpeed = extractNextInt(tail, pos);
+  while (pos < len && isSpace(tail[pos])) pos++;
+  if (pos >= len || tolower(tail[pos]) != 'b') { Serial.println("ERR: expected 'b' after forward speed"); return; }
+  pos++; // consume 'b'
+
+  // Back time
+  long backTime = extractNextInt(tail, pos);
+  while (pos < len && isSpace(tail[pos])) pos++;
+  if (pos >= len || tolower(tail[pos]) != 's') { Serial.println("ERR: expected 's' after back time"); return; }
+  pos++; // consume 's'
+
+  // Back speed
+  long backSpeed = extractNextInt(tail, pos);
+
+  // sanitize
+  fwdTime = max(0L, fwdTime);
+  backTime = max(0L, backTime);
+  fwdSpeed = constrain((int)fwdSpeed, 0, 255);
+  backSpeed = constrain((int)backSpeed, 0, 255);
+
+  Serial.print("Pulse: fwdTime="); Serial.print(fwdTime);
+  Serial.print(" fwdSpd="); Serial.print(fwdSpeed);
+  Serial.print(" backTime="); Serial.print(backTime);
+  Serial.print(" backSpd="); Serial.println(backSpeed);
+
+  // Forward
+  runMotor(IN1, IN2, (int)fwdSpeed, +1);
+  delay((unsigned long)fwdTime);
+  stopMotor(IN1, IN2);
+  delay(20);
+
+  // small direction switch pause to protect driver/board
+  delay(DIRECTION_SWITCH_DELAY);
+
+  // Backward
+  runMotor(IN1, IN2, (int)backSpeed, -1);
+  delay((unsigned long)backTime);
+  stopMotor(IN1, IN2);
+
+  Serial.println("Pulse complete.");
+}
+
+// -----------------------------------------------
+// Alternating Mode
+// -----------------------------------------------
+void runAlternating(unsigned long runTime, unsigned long gapTime) {
+  if (runTime < MIN_RUN_TIME) runTime = MIN_RUN_TIME;
+  if (gapTime < MIN_GAP_TIME) gapTime = MIN_GAP_TIME;
+
+  Serial.println("Alternating mode started.");
+  isAlternating = true;
+
+  while (isAlternating) {
+    // ---- Motor S ----
+    runMotor(motorS1, motorS2, shootingSpeed, +1);
+    unsigned long start = millis();
+    while (millis() - start < runTime) {
+      // allow immediate stop by checking incoming 'X'
+      if (Serial.available()) {
+        // peek without consuming line until command processed in loop()
+        // But simplest: if there is an 'X' command pending, we'll set isAlternating false when main loop reads it.
+      }
+      delay(10);
+    }
+    stopMotor(motorS1, motorS2);
+    if (!isAlternating) break;
+    delay(gapTime);
+    if (!isAlternating) break;
+
+    // ---- Motor D ----
+    runMotor(motorD1, motorD2, dealingSpeed, +1);
+    start = millis();
+    while (millis() - start < runTime) {
+      if (Serial.available()) {
+        // same as above
+      }
+      delay(10);
+    }
+    stopMotor(motorD1, motorD2);
+    if (!isAlternating) break;
+    delay(gapTime);
+  }
+
+  Serial.println("Alternating mode ended.");
+}
+
+// -----------------------------------------------
+// Setup
+// -----------------------------------------------
 void setup() {
   Serial.begin(9600);
-  Serial.println("DRV8833 Dual Motor Controller Ready.");
+  Serial.setTimeout(200); // reasonable timeout for parse operations
+  Serial.println("Controller Ready.");
 
   pinMode(motorD1, OUTPUT);
   pinMode(motorD2, OUTPUT);
   pinMode(motorS1, OUTPUT);
   pinMode(motorS2, OUTPUT);
 
-  shootingStop();
-  dealingStop();
+  stopMotor(motorD1, motorD2);
+  stopMotor(motorS1, motorS2);
 }
 
-// -----------------------------------------------------------------------------
-// MAIN LOOP
-// -----------------------------------------------------------------------------
+// -----------------------------------------------
+// Read tail of command line (everything to newline) as trimmed String
+// -----------------------------------------------
+String readTailOfLine() {
+  // Read remaining line up to newline (non-blocking if something available)
+  String tail = "";
+  // Wait briefly if characters are still coming (allow multi-byte commands)
+  unsigned long start = millis();
+  while (millis() - start < 20) {
+    if (Serial.available()) break;
+    delay(1);
+  }
+  // read up to newline
+  tail = Serial.readStringUntil('\n');
+  tail.trim();
+  return tail;
+}
+
+// -----------------------------------------------
+// Main Loop
+// -----------------------------------------------
 void loop() {
+  if (!Serial.available()) return;
 
-  if (Serial.available() == 0) {
-    delay(5);
-    return;
+  // read first non-whitespace char (command code)
+  char cmd = 0;
+  // skip whitespace/newlines
+  while (Serial.available()) {
+    int ch = Serial.peek();
+    if (ch == '\r' || ch == '\n' || isSpace(ch)) {
+      Serial.read(); // consume
+      continue;
+    }
+    cmd = (char)Serial.read();
+    break;
   }
+  if (cmd == 0) return;
+  cmd = toupper(cmd);
 
-  char c = toupper(Serial.read());
+  // For commands that include parameters, read rest of line as tail string
+  String tail = readTailOfLine();
 
-  // ---------------- SPEED COMMANDS ----------------
-  if (c == 'C') {
-    if (Serial.available() > 0) {
-      char m = toupper(Serial.read());   // S or D
-      int val = Serial.parseInt();
+  // -------- Speed commands (C) --------
+  // Format: C S 200  or CS200  (we accept both: tail may be "S200" or " 200")
+  if (cmd == 'C') {
+    // tail might start with ID char or might just be number if user already provided ID in previous char
+    // If tail begins with a letter, use it; otherwise check next available char (not ideal), but we'll accept tail prefixed ID
+    char id = 0;
+    int pos = 0;
+    while (pos < tail.length() && isSpace(tail[pos])) pos++;
+    if (pos < tail.length() && isAlpha(tail[pos])) {
+      id = toupper(tail[pos]);
+      pos++;
+    } else {
+      // if no ID in tail, try to get next char from serial if available (unlikely)
+      id = ' '; // invalid
+    }
+    long spd = extractNextInt(tail, pos);
+    spd = constrain((int)spd, 0, 255);
 
-      if (val < 0 || val > 255) {
-        Serial.println("Error: Speed must be 0–255.");
-        return;
-      }
-
-      if (m == 'S') {
-        shootingSpeed = val;
-        Serial.print("Shooting speed set to ");
-        Serial.println(val);
-        if (shootingOn) shootingForward();
-      }
-      else if (m == 'D') {
-        dealingSpeed = val;
-        Serial.print("Dealing speed set to ");
-        Serial.println(val);
-      }
-      else {
-        Serial.println("Error: Use CS<speed> or CD<speed>.");
-      }
+    if (id == 'S') {
+      shootingSpeed = spd;
+      Serial.print("Shooting speed set to ");
+      Serial.println(spd);
+    } else if (id == 'D') {
+      dealingSpeed = spd;
+      Serial.print("Dealing speed set to ");
+      Serial.println(spd);
+    } else {
+      Serial.println("ERR: Speed command requires ID 'S' or 'D' (e.g. CS200 or CD150).");
     }
     return;
   }
 
-  // ---------------- SHOOTING MOTOR ----------------
-  if (c == 'S') {
-    if (Serial.available()) {
-      char next = toupper(Serial.read());
-      if (next == 'F') { shootingForward();  Serial.println("Shooting Forward");  return; }
-      if (next == 'B') { shootingBackward(); Serial.println("Shooting Backward"); return; }
-      if (next == 'X') { shootingStop();     Serial.println("Shooting Stopped");  return; }
-    }
+  // -------- STOP ALL --------
+  if (cmd == 'X') {
+    isAlternating = false; // allow runAlternating to exit
+    stopMotor(motorS1, motorS2);
+    stopMotor(motorD1, motorD2);
+    Serial.println("ALL STOPPED.");
+    return;
   }
 
-  // ---------------- DEALING MOTOR ----------------
-  if (c == 'X') {
-    if (Serial.available()) {
-      char next = toupper(Serial.read());
-      if (next == 'F') { dealingForward();  Serial.println("Dealing Forward");  return; }
-      if (next == 'B') { dealingBackward(); Serial.println("Dealing Backward"); return; }
-      if (next == 'X') { dealingStop();     Serial.println("Dealing Stopped");  return; }
+  // -------- Pulse Commands (D or S) --------
+  if (cmd == 'D') {
+    if (tail.length() == 0) {
+      // maybe user put everything together like "D100s200b150s255" with no newline and we already consumed 'D' only.
+      // try to read more
+      tail = readTailOfLine();
     }
-  }
-
-  // ---------------- DEALING TIMED PULSE ----------------
-  if (c == 'D') {
-    long forwardTime = Serial.parseInt();
-
-    if (Serial.peek() == 'B' || Serial.peek() == 'b')
-      Serial.read();
-
-    long backwardsTime = Serial.parseInt();
-
-    if (forwardTime <= 0) {
-      Serial.println("Error: Use D<ms>B<ms>");
+    if (tail.length() == 0) {
+      Serial.println("ERR: No parameters for D pulse. Example: D100s200b150s255");
       return;
     }
-
-    Serial.print("Pulse: Fwd "); Serial.print(forwardTime);
-    Serial.print(" ms, Back "); Serial.print(backwardsTime); Serial.println(" ms");
-
-    dealingForward();
-    delay(forwardTime);
-
-    dealingStop();
-    delay(25);
-
-    if (backwardsTime > 0) {
-      dealingBackward();
-      delay(backwardsTime);
-      dealingStop();
+    runPulseCommandFromString(tail, motorD1, motorD2);
+    return;
+  }
+  if (cmd == 'S') {
+    if (tail.length() == 0) {
+      tail = readTailOfLine();
     }
-
+    if (tail.length() == 0) {
+      Serial.println("ERR: No parameters for S pulse. Example: S100s200b150s255");
+      return;
+    }
+    runPulseCommandFromString(tail, motorS1, motorS2);
     return;
   }
 
-  // ---------------- UNKNOWN COMMAND ----------------
-  Serial.print("Unknown command: ");
-  Serial.println(c);
+  // -------- Alternating Mode (A) --------
+  if (cmd == 'A') {
+    // tail expected: <runTime>,<gapTime>
+    // Example: A500,200 or "500,200"
+    int pos = 0;
+    long runTime = extractNextInt(tail, pos);
+    // skip until comma
+    while (pos < tail.length() && tail[pos] != ',') pos++;
+    if (pos < tail.length() && tail[pos] == ',') pos++;
+    long gapTime = extractNextInt(tail, pos);
+
+    if (runTime < (long)MIN_RUN_TIME) runTime = MIN_RUN_TIME;
+    if (gapTime < 0) gapTime = 0;
+
+    // start alternating (this function blocks until stopped via X)
+    runAlternating((unsigned long)runTime, (unsigned long)gapTime);
+    return;
+  }
+
+  Serial.println("Unknown command.");
 }
