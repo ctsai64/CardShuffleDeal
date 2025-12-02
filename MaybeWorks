@@ -1,0 +1,375 @@
+#include <AccelStepper.h>
+#include "Adafruit_LiquidCrystal.h"
+
+// =======================================================
+//                     PIN ASSIGNMENTS
+// =======================================================
+
+// NEW PIN MAPPING (2-pin motors)
+const int motorL1 = 6;   // Left shuffle forward
+const int motorL2 = 7;   // Left shuffle backward
+
+const int motorR1 = 8;   // Right shuffle forward
+const int motorR2 = 9;   // Right shuffle backward
+
+const int motorD1 = 4;   // Deal forward
+const int motorD2 = 5;   // Deal backward
+
+const int motorS1 = 3;   // Shooter forward
+const int motorS2 = 2;   // Shooter backward
+
+// Stepper 28BYJ-48 + ULN2003
+#define IN1 10
+#define IN2 11
+#define IN3 12
+#define IN4 13
+
+// Buttons (unchanged)
+const int butPlayUp   = 2;
+const int butPlayDown = 3;
+const int butCardUp   = 4;
+const int butCardDown = 5;
+const int butStart    = A2;
+
+// Photoresistors
+const int phoRight = A0;
+const int phoLeft  = A1;
+
+// Random seed
+const int randPin = A3;
+
+// =======================================================
+//                     CONSTANTS
+// =======================================================
+
+const unsigned long shuffleRunTime   = 300;
+const unsigned long dealForwardTime  = 45;
+const unsigned long dealBackwardTime = 150;
+
+const int sensorThreshold = 1;
+
+int numPlayers = 4;
+int numCards   = 52;
+
+// LCD
+Adafruit_LiquidCrystal lcd(0);
+
+// =======================================================
+//                     STEPPER
+// =======================================================
+
+AccelStepper stepper(AccelStepper::FULL4WIRE, IN1, IN3, IN2, IN4);
+
+const float stepsPerRev = 2048.0;
+const float stepsPerDegree = stepsPerRev / 360.0;
+
+float currentAngle = 0.0;
+int stepperSpeed = 1000;
+
+// =======================================================
+//                   MOTOR HELPERS
+// =======================================================
+
+void motorForward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, HIGH);
+  digitalWrite(pin2, LOW);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+
+void motorBackward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, HIGH);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+
+// Shuffle motors
+void runShuffleLeft()  { motorForward(motorL1, motorL2, shuffleRunTime); }
+void runShuffleRight() { motorForward(motorR1, motorR2, shuffleRunTime); }
+void dealFor() { motorForward(motorD1, motorD2, shuffleRunTime); }
+
+// Deal motor
+void runDealForward()  { motorForward(motorD1, motorD2, dealForwardTime); }
+void runDealBackward() { motorBackward(motorD1, motorD2, dealBackwardTime); }
+
+// Shooter motor
+void shooterOn()       { digitalWrite(motorS1, HIGH); digitalWrite(motorS2, LOW); }
+void shooterOff()      { digitalWrite(motorS1, LOW);  digitalWrite(motorS2, LOW); }
+
+// =======================================================
+//                        SENSORS
+// =======================================================
+
+bool leftHasCards()  { return analogRead(phoLeft)  < sensorThreshold; }
+bool rightHasCards() { return analogRead(phoRight) < sensorThreshold; }
+
+// =======================================================
+//                     LCD ANIMATIONS
+// =======================================================
+
+void lcdShufflingAnimation() {
+  lcd.clear();
+  lcd.print("Shuffling...");
+  Serial.println("Shuffling animation");
+
+  for (int i = 0; i < 3; i++) {
+    lcd.setCursor(0, 1); lcd.print(".   "); delay(250);
+    lcd.setCursor(0, 1); lcd.print("..  "); delay(250);
+    lcd.setCursor(0, 1); lcd.print("..."); delay(250);
+  }
+}
+
+void lcdDealingAnimation() {
+  lcd.clear();
+  lcd.print("Dealing cards");
+  Serial.println("Dealing animation");
+
+  for (int i = 0; i < 5; i++) {
+    lcd.setCursor(0, 1); lcd.print(">");   delay(150);
+    lcd.setCursor(0, 1); lcd.print(">>");  delay(150);
+    lcd.setCursor(0, 1); lcd.print(">>>"); delay(150);
+    lcd.setCursor(0, 1); lcd.print("    "); delay(150);
+  }
+}
+
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("Players: "); lcd.print(numPlayers);
+  lcd.setCursor(0,1); lcd.print("Cards:   "); lcd.print(numCards);
+}
+
+// =======================================================
+//                     STEPPER CONTROL
+// =======================================================
+
+void setSpeed(int spd) {
+  stepperSpeed = constrain(spd, 200, 1800);
+  stepper.setMaxSpeed(stepperSpeed);
+}
+
+void rotateDegrees(float degrees) {
+  float diff = degrees;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+
+  long steps = diff * stepsPerDegree;
+  stepper.move(steps);
+  currentAngle += diff;
+
+  if (currentAngle >= 360) currentAngle -= 360;
+  if (currentAngle < 0)    currentAngle += 360;
+}
+
+// =======================================================
+//                   SERIAL TEST MODE
+// =======================================================
+
+void runTestMode() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("TEST MODE");
+  lcd.setCursor(0,1);
+  lcd.print("Serial Control");
+
+  Serial.println("\n===== TEST MODE =====");
+  Serial.println("Shuffle motors:");
+  Serial.println("  L1 = Left FORWARD pulse");
+  Serial.println("  R1 = Right FORWARD pulse");
+  Serial.println("Deal motor:");
+  Serial.println("  DF = Deal FORWARD pulse");
+  Serial.println("  DB = Deal BACKWARD pulse");
+  Serial.println("Shooter:");
+  Serial.println("  S1 = Shooter ON");
+  Serial.println("  S0 = Shooter OFF");
+  Serial.println("Stepper:");
+  Serial.println("  CW / CCW");
+  Serial.println("=======================");
+
+  while (true) {
+    stepper.run();
+
+    if (Serial.available()) {
+      String cmd = Serial.readStringUntil('\n');
+      cmd.trim();
+
+      Serial.print("CMD RECEIVED: ");
+      Serial.println(cmd);
+
+      if (cmd == "L1") { 
+        Serial.println("Running Left Shuffle Motor");
+        runShuffleLeft(); 
+      }
+
+      if (cmd == "R1") { 
+        Serial.println("Running Right Shuffle Motor");
+        runShuffleRight(); 
+      }
+
+      if (cmd == "DF") { 
+        Serial.println("Deal Motor FORWARD");
+        dealFor();
+      }
+
+      if (cmd == "DB") { 
+        Serial.println("Deal Motor BACKWARD");
+        runDealBackward(); 
+      }
+
+      if (cmd == "S1") { 
+        Serial.println("Shooter ON");
+        shooterOn(); 
+      }
+
+      if (cmd == "S0") { 
+        Serial.println("Shooter OFF");
+        shooterOff(); 
+      }
+
+      if (cmd == "CW")  { 
+        Serial.println("Stepper: 90 degrees CW");
+        rotateDegrees(90);
+      }
+
+      if (cmd == "CCW") { 
+        Serial.println("Stepper: 90 degrees CCW");
+        rotateDegrees(-90);
+      }
+
+      if (cmd.startsWith("SPD")) {
+        int sp = cmd.substring(3).toInt();
+        Serial.print("Setting Stepper Speed to: ");
+        Serial.println(sp);
+        setSpeed(sp);
+      }
+
+      if (cmd == "READ") {
+        Serial.print("Left Sensor  = ");
+        Serial.println(analogRead(phoLeft));
+
+        Serial.print("Right Sensor = ");
+        Serial.println(analogRead(phoRight));
+      }
+    }
+  }
+}
+
+// =======================================================
+//                        SETUP
+// =======================================================
+
+void setup() {
+  Serial.begin(9600);
+  randomSeed(analogRead(randPin));
+
+  pinMode(motorL1, OUTPUT);
+  pinMode(motorL2, OUTPUT);
+  pinMode(motorR1, OUTPUT);
+  pinMode(motorR2, OUTPUT);
+  pinMode(motorD1, OUTPUT);
+  pinMode(motorD2, OUTPUT);
+  pinMode(motorS1, OUTPUT);
+  pinMode(motorS2, OUTPUT);
+
+  pinMode(butPlayUp,   INPUT_PULLUP);
+  pinMode(butPlayDown, INPUT_PULLUP);
+  pinMode(butCardUp,   INPUT_PULLUP);
+  pinMode(butCardDown, INPUT_PULLUP);
+  pinMode(butStart,    INPUT_PULLUP);
+
+  lcd.begin(16,2);
+
+  stepper.setMaxSpeed(stepperSpeed);
+  stepper.setAcceleration(800);
+
+  updateLCD();
+
+  // Reset all motors OFF
+  digitalWrite(motorL1, LOW);
+  digitalWrite(motorL2, LOW);
+  digitalWrite(motorR1, LOW);
+  digitalWrite(motorR2, LOW);
+  digitalWrite(motorD1, LOW);
+  digitalWrite(motorD2, LOW);
+  digitalWrite(motorS1, LOW);
+  digitalWrite(motorS2, LOW);
+}
+
+// =======================================================
+//                        LOOP
+// =======================================================
+
+void loop() {
+  // Keep all motors off unless actively pulsed
+  digitalWrite(motorL1, LOW);
+  digitalWrite(motorL2, LOW);
+  digitalWrite(motorR1, LOW);
+  digitalWrite(motorR2, LOW);
+  digitalWrite(motorD1, LOW);
+  digitalWrite(motorD2, LOW);
+  digitalWrite(motorS1, LOW);
+  digitalWrite(motorS2, LOW);
+
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd == "TEST") runTestMode();
+  }
+
+  if (!digitalRead(butPlayUp)) { numPlayers++; updateLCD(); delay(200); }
+  if (!digitalRead(butPlayDown)) { if (numPlayers > 1) numPlayers--; updateLCD(); delay(200); }
+
+  if (!digitalRead(butCardUp)) { numCards++; updateLCD(); delay(200); }
+  if (!digitalRead(butCardDown)) { if (numCards > 1) numCards--; updateLCD(); delay(200); }
+
+  if (!digitalRead(butStart)) {
+
+    lcdShufflingAnimation();
+
+    bool left  = leftHasCards();
+    bool right = rightHasCards();
+
+    // --- SHUFFLING ---
+    while (left || right) {
+      if (left && right) {
+        (random(0,2) == 0) ? runShuffleLeft() : runShuffleRight();
+      } else if (left)  runShuffleLeft();
+      else if (right) runShuffleRight();
+
+      delay(55);
+
+      left  = leftHasCards();
+      right = rightHasCards();
+    }
+
+    // --- DEALING ---
+    lcdDealingAnimation();
+
+    float angle = 360.0 / numPlayers;
+
+    shooterOn();
+
+    int remaining = numCards;
+    while (remaining > 0) {
+
+      runDealForward();
+      // runDealBackward(); // optional
+
+      rotateDegrees(angle);
+      remaining--;
+    }
+
+    shooterOff();
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("  Finished!");
+    delay(1500);
+
+    updateLCD();
+  }
+
+  stepper.run();
+}
