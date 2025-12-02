@@ -6,17 +6,17 @@
 // =======================================================
 
 // NEW PIN MAPPING (2-pin motors)
-const int motorL1 = 6;   // Left shuffle forward
-const int motorL2 = 7;   // Left shuffle backward
+const int motorL1 = 2;   // Left shuffle forward
+const int motorL2 = 3;   // Left shuffle backward
 
-const int motorR1 = 8;   // Right shuffle forward
-const int motorR2 = 9;   // Right shuffle backward
+const int motorR1 = 4;   // Right shuffle forward
+const int motorR2 = 5;   // Right shuffle backward
 
-const int motorD1 = 4;   // Deal forward
-const int motorD2 = 5;   // Deal backward
+const int motorD1 = 8;   // Deal forward
+const int motorD2 = 9;   // Deal backward
 
-const int motorS1 = 3;   // Shooter forward
-const int motorS2 = 2;   // Shooter backward
+const int motorS1 = 6;   // Shooter forward
+const int motorS2 = 7;   // Shooter backward
 
 // Stepper 28BYJ-48 + ULN2003
 #define IN1 10
@@ -24,12 +24,12 @@ const int motorS2 = 2;   // Shooter backward
 #define IN3 12
 #define IN4 13
 
-// Buttons (unchanged)
-const int butPlayUp   = 2;
-const int butPlayDown = 3;
-const int butCardUp   = 4;
-const int butCardDown = 5;
-const int butStart    = A2;
+// FIXED BUTTON PINS (old 2/3/4/5 conflicted with motors)
+const int butPlayUp   = A4;
+const int butPlayDown = A5;
+const int butCardUp   = A6;
+const int butCardDown = A7;
+const int butStart    = A8;
 
 // Photoresistors
 const int phoRight = A0;
@@ -86,10 +86,20 @@ void motorBackward(int pin1, int pin2, unsigned long t) {
   digitalWrite(pin2, LOW);
 }
 
+void allOff() {
+  digitalWrite(motorL1, LOW);
+  digitalWrite(motorL2, LOW);
+  digitalWrite(motorR1, LOW);
+  digitalWrite(motorR2, LOW);
+  digitalWrite(motorD1, LOW);
+  digitalWrite(motorD2, LOW);
+  digitalWrite(motorS1, LOW);
+  digitalWrite(motorS2, LOW);
+}
+
 // Shuffle motors
 void runShuffleLeft()  { motorForward(motorL1, motorL2, shuffleRunTime); }
 void runShuffleRight() { motorForward(motorR1, motorR2, shuffleRunTime); }
-void dealFor() { motorForward(motorD1, motorD2, shuffleRunTime); }
 
 // Deal motor
 void runDealForward()  { motorForward(motorD1, motorD2, dealForwardTime); }
@@ -176,11 +186,11 @@ void runTestMode() {
 
   Serial.println("\n===== TEST MODE =====");
   Serial.println("Shuffle motors:");
-  Serial.println("  L1 = Left FORWARD pulse");
-  Serial.println("  R1 = Right FORWARD pulse");
+  Serial.println("  L1 = Left FORWARD");
+  Serial.println("  R1 = Right FORWARD");
   Serial.println("Deal motor:");
-  Serial.println("  DF = Deal FORWARD pulse");
-  Serial.println("  DB = Deal BACKWARD pulse");
+  Serial.println("  DF = Deal FORWARD");
+  Serial.println("  DB = Deal BACKWARD");
   Serial.println("Shooter:");
   Serial.println("  S1 = Shooter ON");
   Serial.println("  S0 = Shooter OFF");
@@ -198,59 +208,30 @@ void runTestMode() {
       Serial.print("CMD RECEIVED: ");
       Serial.println(cmd);
 
-      if (cmd == "L1") { 
-        Serial.println("Running Left Shuffle Motor");
-        runShuffleLeft(); 
-      }
+      // Shuffle
+      if (cmd == "L1") runShuffleLeft();
+      if (cmd == "R1") runShuffleRight();
 
-      if (cmd == "R1") { 
-        Serial.println("Running Right Shuffle Motor");
-        runShuffleRight(); 
-      }
+      // Deal
+      if (cmd == "DF") runDealForward();
+      if (cmd == "DB") runDealBackward();
 
-      if (cmd == "DF") { 
-        Serial.println("Deal Motor FORWARD");
-        dealFor();
-      }
+      // Shooter
+      if (cmd == "S1") shooterOn();
+      if (cmd == "S0") shooterOff();
 
-      if (cmd == "DB") { 
-        Serial.println("Deal Motor BACKWARD");
-        runDealBackward(); 
-      }
-
-      if (cmd == "S1") { 
-        Serial.println("Shooter ON");
-        shooterOn(); 
-      }
-
-      if (cmd == "S0") { 
-        Serial.println("Shooter OFF");
-        shooterOff(); 
-      }
-
-      if (cmd == "CW")  { 
-        Serial.println("Stepper: 90 degrees CW");
-        rotateDegrees(90);
-      }
-
-      if (cmd == "CCW") { 
-        Serial.println("Stepper: 90 degrees CCW");
-        rotateDegrees(-90);
-      }
+      // Stepper
+      if (cmd == "CW")  rotateDegrees(90);
+      if (cmd == "CCW") rotateDegrees(-90);
 
       if (cmd.startsWith("SPD")) {
         int sp = cmd.substring(3).toInt();
-        Serial.print("Setting Stepper Speed to: ");
-        Serial.println(sp);
         setSpeed(sp);
       }
 
       if (cmd == "READ") {
-        Serial.print("Left Sensor  = ");
-        Serial.println(analogRead(phoLeft));
-
-        Serial.print("Right Sensor = ");
-        Serial.println(analogRead(phoRight));
+        Serial.print("Left Sensor  = ");  Serial.println(analogRead(phoLeft));
+        Serial.print("Right Sensor = "); Serial.println(analogRead(phoRight));
       }
     }
   }
@@ -284,17 +265,8 @@ void setup() {
   stepper.setMaxSpeed(stepperSpeed);
   stepper.setAcceleration(800);
 
+  allOff();
   updateLCD();
-
-  // Reset all motors OFF
-  digitalWrite(motorL1, LOW);
-  digitalWrite(motorL2, LOW);
-  digitalWrite(motorR1, LOW);
-  digitalWrite(motorR2, LOW);
-  digitalWrite(motorD1, LOW);
-  digitalWrite(motorD2, LOW);
-  digitalWrite(motorS1, LOW);
-  digitalWrite(motorS2, LOW);
 }
 
 // =======================================================
@@ -302,15 +274,7 @@ void setup() {
 // =======================================================
 
 void loop() {
-  // Keep all motors off unless actively pulsed
-  digitalWrite(motorL1, LOW);
-  digitalWrite(motorL2, LOW);
-  digitalWrite(motorR1, LOW);
-  digitalWrite(motorR2, LOW);
-  digitalWrite(motorD1, LOW);
-  digitalWrite(motorD2, LOW);
-  digitalWrite(motorS1, LOW);
-  digitalWrite(motorS2, LOW);
+  allOff();
 
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
@@ -339,7 +303,6 @@ void loop() {
       else if (right) runShuffleRight();
 
       delay(55);
-
       left  = leftHasCards();
       right = rightHasCards();
     }
@@ -348,15 +311,11 @@ void loop() {
     lcdDealingAnimation();
 
     float angle = 360.0 / numPlayers;
-
     shooterOn();
 
     int remaining = numCards;
     while (remaining > 0) {
-
       runDealForward();
-      // runDealBackward(); // optional
-
       rotateDegrees(angle);
       remaining--;
     }
