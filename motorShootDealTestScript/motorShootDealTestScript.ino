@@ -7,10 +7,10 @@
 //   - d<a>s<b>b<c>s<d>: Dealing Pulse with forward/backward time & speed
 
 // --- Pin Definitions ---
-const int motorD1 = 9;  
-const int motorD2 = 8;  
-const int motorS1 = 7;  
-const int motorS2 = 6;  
+const int motorD1 = 8;  
+const int motorD2 = 9;  
+const int motorS1 = 6;  
+const int motorS2 = 7;  
 
 int shootingSpeed = 255; 
 int dealingSpeed = 255;
