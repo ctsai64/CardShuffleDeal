@@ -38,7 +38,7 @@ const unsigned long dealForwardTime  = 200;
 const unsigned long dealDelay  = 35;
 const unsigned long dealBackwardTime = 150;
 
-const int STEPS_PER_REV = 12;
+const int STEPS_PER_REV = 13;
 const int MICROSTEPPING = 16;      // 1, 2, 4, 8, or 16 depending on MS1–MS3 wiring
 const int STEP_DELAY_US = 1500;
 
@@ -81,11 +81,11 @@ void runShuffleRight() { motorForward(motorR1, motorR2, shuffleRunTime); }
 
 void runAlternate() {
   while (true) {
-    //if (!digitalRead(butStart)) break;
+    if (!digitalRead(butStart)) break;
     runShuffleLeft();
     allOff();
     delay(shuffleDelay);
-    //if (!digitalRead(butStart)) break;
+    if (!digitalRead(butStart)) break;
     runShuffleRight();
     allOff();
     delay(shuffleDelay);
@@ -354,6 +354,7 @@ void loop() {
     }
     */
     runAlternate();
+
 
     lcdDealingAnimation();
     float angle = 360.0 / numPlayers;
