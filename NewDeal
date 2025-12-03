@@ -18,11 +18,13 @@ const int motorD2 = 8;   // Deal backward
 const int motorS1 = 6;   // Shooter forward
 const int motorS2 = 7;   // Shooter backward
 
-// Stepper 28BYJ-48 + ULN2003
-#define IN1 10
-#define IN2 11
-#define IN3 12
-#define IN4 13
+/*
+ // Stepper 28BYJ-48 + ULN2003
+ #define IN1 10
+ #define IN2 11
+ #define IN3 12
+ #define IN4 13
+*/
 
 const int butPlayUp   = 53;
 const int butPlayDown = 52;
@@ -60,13 +62,18 @@ Adafruit_LiquidCrystal lcd(0);
 //                     STEPPER
 // =======================================================
 
-AccelStepper stepper(AccelStepper::FULL4WIRE, IN1, IN3, IN2, IN4);
+const int STEP_PIN = 45;
+const int DIR_PIN  = 44;
+const int ENABLE_PIN = 43; // LOW = enabled, HIGH = disabled
 
-const float stepsPerRev = 2048.0;
-const float stepsPerDegree = stepsPerRev / 360.0;
+// Optional microstepping pins
+const int MS1_PIN = 41;
+const int MS2_PIN = 39;
+const int MS3_PIN = 37;
 
-float currentAngle = 0.0;
-int stepperSpeed = 1000;
+const int STEPS_PER_REV = 100;   // full steps
+const int MICROSTEPPING = 16;      // 1, 2, 4, 8, or 16 depending on MS1–MS3 wiring
+const int STEP_DELAY_US = 800;     // speed (bigger = slower = less current/heat)
 
 // =======================================================
 //                   MOTOR HELPERS
@@ -106,16 +113,14 @@ void runAlternate() {
   while (true) {
     if (!digitalRead(butStart)) break;
     runShuffleLeft();
-    allOff(); 
+    allOff();
     delay(shuffleDelay);
     if (!digitalRead(butStart)) break;
     runShuffleRight();
-    allOff(); 
+    allOff();
     delay(shuffleDelay);
   }
 }
-
-
 
 // Deal motor
 void runDealForward()  { motorForward(motorD1, motorD2, dealForwardTime); }
@@ -171,23 +176,54 @@ void updateLCD() {
 //                     STEPPER CONTROL
 // =======================================================
 
+/*
 void setSpeed(int spd) {
   stepperSpeed = constrain(spd, 200, 1800);
   stepper.setMaxSpeed(stepperSpeed);
 }
+*/
 
+void rotateDegrees(float degrees) {
+  long totalSteps = degreesToSteps(degrees);
+  // Set direction
+  digitalWrite(DIR_PIN, (totalSteps > 0) ? HIGH : LOW);
+  long steps = abs(totalSteps);
+  // Enable driver
+  digitalWrite(ENABLE_PIN, LOW);
+  // Step loop
+  for (long i = 0; i < steps; i++) {
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(STEP_DELAY_US);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(STEP_DELAY_US);
+  }
+
+  // Disable holding torque (prevents heat)
+  digitalWrite(ENABLE_PIN, HIGH);
+}
+
+// ------------------------------------------------------
+// Convert degrees to steps
+// ------------------------------------------------------
+long degreesToSteps(float degrees) {
+  float stepsPerDegree = (STEPS_PER_REV * MICROSTEPPING) / 360.0;
+  return (long)(degrees * stepsPerDegree);
+}
+
+/*
 void rotateDegrees(float degrees) {
   float diff = degrees;
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
 
-  long steps = diff * stepsPerDegree;
+  long steps = lround(diff * stepsPerDegree);
   stepper.move(steps);
   currentAngle += diff;
 
   if (currentAngle >= 360) currentAngle -= 360;
   if (currentAngle < 0)    currentAngle += 360;
 }
+*/
 
 // =======================================================
 //                   SERIAL TEST MODE
@@ -216,11 +252,14 @@ void runTestMode() {
   Serial.println("  CW / CCW");
   Serial.println("=======================");
 
+  // Keep test-mode responsive while ensuring stepper gets the time it needs
   while (true) {
     if (!digitalRead(butPlayUp)){
-        break;
+      break;
     }
-    stepper.run();
+
+    // call run() frequently so stepper can move if there's distance to go
+    //stepper.run();
 
     if (Serial.available()) {
       String cmd = Serial.readStringUntil('\n');
@@ -243,13 +282,23 @@ void runTestMode() {
       if (cmd == "S1") shooterOn();
       if (cmd == "S0") shooterOff();
 
-      // Stepper
-      if (cmd == "CW")  rotateDegrees(90);
-      if (cmd == "CCW") rotateDegrees(-90);
+      // Stepper - schedule movement then actively run until complete
+      if (cmd == "CW") {
+        //enableStepper();
+        rotateDegrees(90);
+        //while (stepper.distanceToGo() != 0) stepper.run();
+        // optionally disableStepper(); // uncomment if you want driver disabled after move
+      }
+      if (cmd == "CCW") {
+        //enableStepper();
+        rotateDegrees(-90);
+       // while (stepper.distanceToGo() != 0) stepper.run();
+        // optionally disableStepper();
+      }
 
       if (cmd.startsWith("SPD")) {
         int sp = cmd.substring(3).toInt();
-        setSpeed(sp);  
+        //setSpeed(sp);
       }
 
       if (cmd == "READ") {
@@ -283,10 +332,26 @@ void setup() {
   pinMode(butCardDown, INPUT_PULLUP);
   pinMode(butStart,    INPUT_PULLUP);
 
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+
+  pinMode(MS1_PIN, OUTPUT);
+  pinMode(MS2_PIN, OUTPUT);
+  pinMode(MS3_PIN, OUTPUT);
+
+  // FULL STEP → lowest current mode
+  digitalWrite(MS1_PIN, LOW);
+  digitalWrite(MS2_PIN, LOW);
+  digitalWrite(MS3_PIN, LOW);
+
+  // Start with driver disabled (cool)
+  digitalWrite(ENABLE_PIN, HIGH);
+
   lcd.begin(16,2);
 
-  stepper.setMaxSpeed(stepperSpeed);
-  stepper.setAcceleration(800);
+  //stepper.setMaxSpeed(stepperSpeed);
+  //stepper.setAcceleration(800);
 
   allOff();
   updateLCD();
@@ -312,7 +377,6 @@ void loop() {
   if (!digitalRead(butCardDown)) { if (numCards > 1) numCards--; updateLCD(); delay(200); }
 
   if (!digitalRead(butStart)) {
-
     lcdShufflingAnimation();
 
     bool left  = leftHasCards();
@@ -378,5 +442,6 @@ void loop() {
     updateLCD();
   }
 
-  stepper.run();
+  // Ensure non-blocking motion continues if scheduled elsewhere
+  //stepper.run();
 }
