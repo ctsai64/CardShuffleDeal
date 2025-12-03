@@ -1,0 +1,72 @@
+// ===============================================================
+//       NEMA 17 + A4988 Safe Low-Current Test Script (MEGA)
+// ===============================================================
+
+const int STEP_PIN = 45;
+const int DIR_PIN  = 44;
+const int EN_PIN   = 43;
+
+// Optional microstepping pins
+const int MS1_PIN = 41;
+const int MS2_PIN = 39;
+const int MS3_PIN = 37;
+
+const int STEPS_PER_REV = 200;   // full steps
+int pulseDelay = 800;             // µs delay — slower = lower current spikes
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n=== A4988 + NEMA17 TEST START ===");
+
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(EN_PIN, OUTPUT);
+
+  pinMode(MS1_PIN, OUTPUT);
+  pinMode(MS2_PIN, OUTPUT);
+  pinMode(MS3_PIN, OUTPUT);
+
+  // FULL STEP → lowest current mode
+  digitalWrite(MS1_PIN, LOW);
+  digitalWrite(MS2_PIN, LOW);
+  digitalWrite(MS3_PIN, LOW);
+
+  // Start with driver disabled (cool)
+  digitalWrite(EN_PIN, HIGH);   // HIGH = DISABLED
+
+  Serial.println("Microstepping: FULL STEP");
+  Serial.println("Driver starts DISABLED (cool mode)");
+}
+
+// ---------------------------------------------------------------
+// Move motor with auto-enable/disable for minimal heat
+// ---------------------------------------------------------------
+void stepMotor(long steps, bool dir) {
+  digitalWrite(EN_PIN, LOW);   // enable driver
+  delay(5);                    // allow current to stabilize
+
+  digitalWrite(DIR_PIN, dir);
+
+  for (long i = 0; i < steps; i++) {
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(pulseDelay);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(pulseDelay);
+  }
+
+  // Disable outputs immediately to remove holding current
+  digitalWrite(EN_PIN, HIGH);  // disable driver
+}
+
+// ---------------------------------------------------------------
+void loop() {
+  Serial.println("→ Forward 1 rev");
+  stepMotor(STEPS_PER_REV, HIGH);
+  delay(800);
+
+  Serial.println("← Backward 1 rev");
+  stepMotor(STEPS_PER_REV, LOW);
+  delay(800);
+
+  Serial.println("=== Looping ===");
+}
