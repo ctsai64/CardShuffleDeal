@@ -1,0 +1,394 @@
+#include "Adafruit_LiquidCrystal.h"
+
+const int motorL1 = 2;   // Left shuffle forward
+const int motorL2 = 3;   // Left shuffle backward
+
+const int motorR1 = 4;   // Right shuffle forward
+const int motorR2 = 5;   // Right shuffle backward
+
+const int motorD1 = 9;   // Deal forward
+const int motorD2 = 8;   // Deal backward
+
+const int motorS1 = 6;   // Shooter forward
+const int motorS2 = 7;   // Shooter backward
+
+const int STEP_PIN = 45;
+const int DIR_PIN  = 44;
+const int ENABLE_PIN = 43;
+
+const int MS1_PIN = 41;
+const int MS2_PIN = 39;
+const int MS3_PIN = 37;
+
+const int butPlayUp   = 53;
+const int butPlayDown = 52;
+const int butCardUp   = 49;
+const int butCardDown = 48;
+const int butStart    = 23;
+
+const int phoRight = A0;
+const int phoLeft  = A1;
+
+const int randPin = A3;
+
+const unsigned long shuffleRunTime   = 300;
+const unsigned long shuffleDelay = 1000;
+
+const unsigned long dealForwardTime  = 200;
+const unsigned long dealDelay  = 35;
+const unsigned long dealBackwardTime = 150;
+
+const int STEPS_PER_REV = 12;
+const int MICROSTEPPING = 16;      // 1, 2, 4, 8, or 16 depending on MS1–MS3 wiring
+const int STEP_DELAY_US = 1500;
+
+const int sensorThreshold = 1;
+
+int numPlayers = 4;
+int numCards   = 52;
+
+Adafruit_LiquidCrystal lcd(0);
+
+void motorForward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, HIGH);
+  digitalWrite(pin2, LOW);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+
+void motorBackward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, HIGH);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+
+void allOff() {
+  digitalWrite(motorL1, LOW);
+  digitalWrite(motorL2, LOW);
+  digitalWrite(motorR1, LOW);
+  digitalWrite(motorR2, LOW);
+  digitalWrite(motorD1, LOW);
+  digitalWrite(motorD2, LOW);
+  digitalWrite(motorS1, LOW);
+  digitalWrite(motorS2, LOW);
+}
+
+void runShuffleLeft()  { motorForward(motorL1, motorL2, shuffleRunTime); }
+void runShuffleRight() { motorForward(motorR1, motorR2, shuffleRunTime); }
+
+void runAlternate() {
+  while (true) {
+    //if (!digitalRead(butStart)) break;
+    runShuffleLeft();
+    allOff();
+    delay(shuffleDelay);
+    //if (!digitalRead(butStart)) break;
+    runShuffleRight();
+    allOff();
+    delay(shuffleDelay);
+  }
+}
+
+void runDealForward()  { motorForward(motorD1, motorD2, dealForwardTime); }
+void runDealBackward() { motorBackward(motorD1, motorD2, dealBackwardTime); }
+
+void shooterOn()       { digitalWrite(motorS1, HIGH); digitalWrite(motorS2, LOW); }
+void shooterOff()      { digitalWrite(motorS1, LOW);  digitalWrite(motorS2, LOW); }
+
+bool leftHasCards()  { return analogRead(phoLeft)  < sensorThreshold; }
+bool rightHasCards() { return analogRead(phoRight) < sensorThreshold; }
+
+void lcdShufflingAnimation() {
+  lcd.clear();
+  lcd.print("Shuffling...");
+  Serial.println("Shuffling animation");
+
+  for (int i = 0; i < 3; i++) {
+    lcd.setCursor(0, 1); lcd.print(".   "); delay(250);
+    lcd.setCursor(0, 1); lcd.print("..  "); delay(250);
+    lcd.setCursor(0, 1); lcd.print("..."); delay(250);
+  }
+}
+
+void lcdDealingAnimation() {
+  lcd.clear();
+  lcd.print("Dealing cards");
+  Serial.println("Dealing animation");
+
+  for (int i = 0; i < 5; i++) {
+    lcd.setCursor(0, 1); lcd.print(">");   delay(150);
+    lcd.setCursor(0, 1); lcd.print(">>");  delay(150);
+    lcd.setCursor(0, 1); lcd.print(">>>"); delay(150);
+    lcd.setCursor(0, 1); lcd.print("    "); delay(150);
+  }
+}
+
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("Players: "); lcd.print(numPlayers);
+  lcd.setCursor(0,1); lcd.print("Cards:   "); lcd.print(numCards);
+}
+
+void rotateDegrees(float degrees) {
+  long totalSteps = degreesToSteps(degrees);
+  digitalWrite(DIR_PIN, (totalSteps > 0) ? HIGH : LOW);
+  long steps = abs(totalSteps);
+  digitalWrite(ENABLE_PIN, LOW);
+  for (long i = 0; i < steps; i++) {
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(STEP_DELAY_US);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(STEP_DELAY_US);
+  }
+  digitalWrite(ENABLE_PIN, HIGH);
+}
+
+long degreesToSteps(float degrees) {
+  float stepsPerDegree = (STEPS_PER_REV * MICROSTEPPING) / 360.0;
+  return (long)(degrees * stepsPerDegree);
+}
+
+void runTestMode() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("TEST MODE");
+  lcd.setCursor(0,1);
+  lcd.print("Buttons+Serial");
+
+  Serial.println("\n===== TEST MODE =====");
+
+  while (true) {
+    if (!digitalRead(butStart)) {
+      lcd.clear();
+      lcd.print("Exit Test Mode");
+      delay(500);
+      updateLCD();
+      return;
+    }
+
+    if (!digitalRead(butPlayUp)) {
+      lcd.clear();
+      lcd.print("Shuffle Left");
+      runShuffleLeft();
+      allOff();
+      delay(shuffleDelay);
+
+      lcd.clear();
+      lcd.print("Shuffle Right");
+      runShuffleRight();
+      allOff();
+      delay(shuffleDelay);
+
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("TEST MODE");
+    }
+
+    if (!digitalRead(butPlayDown)) {
+      lcd.clear();
+      lcd.print("Shooter ON");
+      shooterOn();
+      delay(1000);
+
+      lcd.clear();
+      lcd.print("Shooter OFF");
+      shooterOff();
+      delay(200);
+
+      lcd.clear();
+      lcd.print("Deal FWD");
+      runDealForward();
+      delay(300);
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("TEST MODE");
+    }
+
+    if (!digitalRead(butCardUp)) {
+      lcd.clear();
+      lcd.print("Rotate 180");
+      rotateDegrees(180);
+      delay(300);
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("TEST MODE");
+    }
+
+    if (!digitalRead(butCardDown)) {
+      int leftVal  = analogRead(phoLeft);
+      int rightVal = analogRead(phoRight);
+
+      lcd.clear();
+      lcd.print("L:");
+      lcd.print(leftVal);
+      lcd.print(" R:");
+      lcd.print(rightVal);
+
+      Serial.print("Left Sensor: ");
+      Serial.println(leftVal);
+      Serial.print("Right Sensor: ");
+      Serial.println(rightVal);
+
+      delay(500);
+    }
+
+    if (Serial.available()) {
+      String cmd = Serial.readStringUntil('\n');
+      cmd.trim();
+
+      Serial.print("CMD RECEIVED: ");
+      Serial.println(cmd);
+
+      if (cmd == "L1") runShuffleLeft();
+      if (cmd == "R1") runShuffleRight();
+      if (cmd == "A")  runAlternate();
+
+      if (cmd == "D1") runDealForward();
+      if (cmd == "DB") runDealBackward();
+
+      if (cmd == "S1") shooterOn();
+      if (cmd == "S0") shooterOff();
+
+      if (cmd == "CW")  rotateDegrees(90);
+      if (cmd == "CCW") rotateDegrees(-90);
+
+      if (cmd == "READ") {
+        Serial.print("Left Sensor  = ");
+        Serial.println(analogRead(phoLeft));
+        Serial.print("Right Sensor = ");
+        Serial.println(analogRead(phoRight));
+      }
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  randomSeed(analogRead(randPin));
+
+  pinMode(motorL1, OUTPUT);
+  pinMode(motorL2, OUTPUT);
+  pinMode(motorR1, OUTPUT);
+  pinMode(motorR2, OUTPUT);
+  pinMode(motorD1, OUTPUT);
+  pinMode(motorD2, OUTPUT);
+  pinMode(motorS1, OUTPUT);
+  pinMode(motorS2, OUTPUT);
+
+  pinMode(butPlayUp,   INPUT_PULLUP);
+  pinMode(butPlayDown, INPUT_PULLUP);
+  pinMode(butCardUp,   INPUT_PULLUP);
+  pinMode(butCardDown, INPUT_PULLUP);
+  pinMode(butStart,    INPUT_PULLUP);
+
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+
+  pinMode(MS1_PIN, OUTPUT);
+  pinMode(MS2_PIN, OUTPUT);
+  pinMode(MS3_PIN, OUTPUT);
+
+  digitalWrite(MS1_PIN, LOW);
+  digitalWrite(MS2_PIN, LOW);
+  digitalWrite(MS3_PIN, LOW);
+
+  digitalWrite(ENABLE_PIN, HIGH);
+
+  lcd.begin(16,2);
+
+  allOff();
+  updateLCD();
+}
+
+void loop() {
+  allOff();
+
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd == "TEST") runTestMode();
+  }
+
+  static unsigned long testHoldStart = 0;
+
+  if (!digitalRead(butPlayUp) && !digitalRead(butCardDown)) {
+      if (testHoldStart == 0) testHoldStart = millis();
+
+      if (millis() - testHoldStart >= 1000) {
+          runTestMode();
+          testHoldStart = 0;
+          return;
+      }
+  } else {
+      testHoldStart = 0;
+  }
+
+  if (!digitalRead(butPlayUp)) { numPlayers++; updateLCD(); delay(200); }
+  if (!digitalRead(butPlayDown)) { if (numPlayers > 1) numPlayers--; updateLCD(); delay(200); }
+
+  if (!digitalRead(butCardUp)) { numCards++; updateLCD(); delay(200); }
+  if (!digitalRead(butCardDown)) { if (numCards > 1) numCards--; updateLCD(); delay(200); }
+
+  if (!digitalRead(butStart)) {
+    lcdShufflingAnimation();
+
+    /*
+    bool left  = leftHasCards();
+    bool right = rightHasCards();
+    while (left || right) {
+      if (!digitalRead(butStart)){
+        break;
+      }
+      if (left && right) {
+        (random(0,2) == 0) ? runShuffleLeft() : runShuffleRight();
+      } else if (left)  runShuffleLeft();
+      else if (right) runShuffleRight();
+
+      delay(shuffleDelay);
+      left  = leftHasCards();
+      right = rightHasCards();
+    }
+    */
+    runAlternate();
+
+    lcdDealingAnimation();
+    float angle = 360.0 / numPlayers;
+    runDealBackward();
+    shooterOn();
+    int remaining = numCards;
+    while (true) {
+      if (!digitalRead(butStart)){
+        break;
+      }
+      runDealForward();
+      delay(dealDelay);
+      runDealBackward();
+      delay(shuffleDelay);
+      rotateDegrees(angle);
+      digitalWrite(motorD1, LOW);
+      digitalWrite(motorD2, LOW);
+    }
+    /*
+    while (remaining > 0) {
+      if (!digitalRead(butStart)){
+        break;
+      }
+      runDealForward();
+      rotateDegrees(angle);
+      remaining--;
+    }
+    */
+    shooterOff();
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("  Finished!");
+    delay(1500);
+
+    updateLCD();
+  }
+}
