@@ -73,7 +73,7 @@ const int MS3_PIN = 37;
 
 const int STEPS_PER_REV = 100;   // full steps
 const int MICROSTEPPING = 16;      // 1, 2, 4, 8, or 16 depending on MS1–MS3 wiring
-const int STEP_DELAY_US = 800;     // speed (bigger = slower = less current/heat)
+const int STEP_DELAY_US = 1500;     // speed (bigger = slower = less current/heat)
 
 // =======================================================
 //                   MOTOR HELPERS
