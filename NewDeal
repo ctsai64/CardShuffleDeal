@@ -46,9 +46,9 @@ const int randPin = A3;
 const unsigned long shuffleRunTime   = 300;
 const unsigned long shuffleDelay = 1000;
 
-const unsigned long dealForwardTime  = 50;
+const unsigned long dealForwardTime  = 200;
 const unsigned long dealDelay  = 35;
-const unsigned long dealBackwardTime = 200;
+const unsigned long dealBackwardTime = 150;
 
 const int sensorThreshold = 1;
 
@@ -71,7 +71,7 @@ const int MS1_PIN = 41;
 const int MS2_PIN = 39;
 const int MS3_PIN = 37;
 
-const int STEPS_PER_REV = 100;   // full steps
+const int STEPS_PER_REV = 12;   // full steps
 const int MICROSTEPPING = 16;      // 1, 2, 4, 8, or 16 depending on MS1–MS3 wiring
 const int STEP_DELAY_US = 1500;     // speed (bigger = slower = less current/heat)
 
@@ -418,7 +418,6 @@ void loop() {
       runDealBackward();
       delay(shuffleDelay);
       //rotateDegrees(angle);
-      Serial.println("rotating");
       digitalWrite(motorD1, LOW);
       digitalWrite(motorD2, LOW);
     }
