@@ -1,0 +1,141 @@
+#include "Adafruit_LiquidCrystal.h"
+const int motorL  = 2;
+const int motorR  = 3;
+const int motorD1 = 4;
+const int motorD2 = 5;
+const int motorS  = 6;
+const int STEP_PIN   = 7;
+const int DIR_PIN    = 8;
+const int ENABLE_PIN = 9;
+const int butCardUp   = 10;
+const int butCardDown = 11;
+const int butPlayUp   = A1;
+const int butPlayDown = A2;
+const int butStart    = A3;
+const unsigned long shuffleRunTime = 300;
+const unsigned long shuffleDelay   = 1000;
+const unsigned long dealForwardTime  = 200;
+const unsigned long dealBackwardTime = 150;
+const unsigned long dealDelay        = 35;
+const int STEPS_PER_REV = 200;
+const int MICROSTEPPING = 16;
+const int STEP_DELAY_US = 1500;
+int numPlayers = 4;
+int numCards   = 52;
+Adafruit_LiquidCrystal lcd(0);
+void motorPulse(int pin, unsigned long t) {
+  digitalWrite(pin, HIGH);
+  delay(t);
+  digitalWrite(pin, LOW);
+}
+void motorForward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, HIGH);
+  digitalWrite(pin2, LOW);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+void motorBackward(int pin1, int pin2, unsigned long t) {
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, HIGH);
+  delay(t);
+  digitalWrite(pin1, LOW);
+  digitalWrite(pin2, LOW);
+}
+void allOff() {
+  digitalWrite(motorL, LOW);
+  digitalWrite(motorR, LOW);
+  digitalWrite(motorD1, LOW);
+  digitalWrite(motorD2, LOW);
+  digitalWrite(motorS, LOW);
+}
+void runShuffleLeft()  { motorPulse(motorL, shuffleRunTime); }
+void runShuffleRight() { motorPulse(motorR, shuffleRunTime); }
+void runAlternate() {
+  while (digitalRead(butStart)) {
+    runShuffleLeft();
+    delay(shuffleDelay);
+    runShuffleRight();
+    delay(shuffleDelay);
+  }
+}
+void runDealForward()  { motorForward(motorD1, motorD2, dealForwardTime); }
+void runDealBackward() { motorBackward(motorD1, motorD2, dealBackwardTime); }
+void shooterOn()  { digitalWrite(motorS, HIGH); }
+void shooterOff() { digitalWrite(motorS, LOW); }
+long degreesToSteps(float degrees) {
+  float stepsPerDegree = (STEPS_PER_REV * MICROSTEPPING) / 360.0;
+  return (long)(degrees * stepsPerDegree);
+}
+void rotateDegrees(float degrees) {
+  long steps = abs(degreesToSteps(degrees));
+  digitalWrite(DIR_PIN, degrees > 0);
+  digitalWrite(ENABLE_PIN, LOW);
+  for (long i = 0; i < steps; i++) {
+    digitalWrite(STEP_PIN, HIGH);
+    delayMicroseconds(STEP_DELAY_US);
+    digitalWrite(STEP_PIN, LOW);
+    delayMicroseconds(STEP_DELAY_US);
+  }
+  digitalWrite(ENABLE_PIN, HIGH);
+}
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("Players: "); lcd.print(numPlayers);
+  lcd.setCursor(0,1); lcd.print("Cards: ");   lcd.print(numCards);
+}
+void lcdShufflingAnimation() {
+  lcd.clear();
+  lcd.print("Shuffling...");
+  delay(750);
+}
+void lcdDealingAnimation() {
+  lcd.clear();
+  lcd.print("Dealing...");
+  delay(750);
+}
+void setup() {
+  Serial.begin(9600);
+  pinMode(motorL, OUTPUT);
+  pinMode(motorR, OUTPUT);
+  pinMode(motorD1, OUTPUT);
+  pinMode(motorD2, OUTPUT);
+  pinMode(motorS, OUTPUT);
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+  digitalWrite(ENABLE_PIN, HIGH);
+  pinMode(butPlayUp, INPUT_PULLUP);
+  pinMode(butPlayDown, INPUT_PULLUP);
+  pinMode(butCardUp, INPUT_PULLUP);
+  pinMode(butCardDown, INPUT_PULLUP);
+  pinMode(butStart, INPUT_PULLUP);
+  lcd.begin(16,2);
+  allOff();
+  updateLCD();
+}
+void loop() {
+  if (!digitalRead(butPlayUp))   { numPlayers++; updateLCD(); delay(200); }
+  if (!digitalRead(butPlayDown)) { if (numPlayers > 1) numPlayers--; updateLCD(); delay(200); }
+  if (!digitalRead(butCardUp))   { numCards++; updateLCD(); delay(200); }
+  if (!digitalRead(butCardDown)) { if (numCards > 1) numCards--; updateLCD(); delay(200); }
+  if (!digitalRead(butStart)) {
+    lcdShufflingAnimation();
+    runAlternate();
+    lcdDealingAnimation();
+    float angle = 360.0 / numPlayers;
+    shooterOn();
+    delay(300);
+    for (int i = 0; i < numCards; i++) {
+      runDealForward();
+      delay(dealDelay);
+      runDealBackward();
+      rotateDegrees(angle);
+    }
+    shooterOff();
+    lcd.clear();
+    lcd.print("Finished!");
+    delay(1500);
+    updateLCD();
+  }
+}
